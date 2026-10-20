@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>しゃぼん玉ぽっぽ（視覚特化版）</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', 'Hiragino Maru Gothic ProN', 'Rounded M+ 1c', sans-serif;
+      touch-action: none;
+      overflow: hidden;
+      background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* しゃぼん玉の基本スタイルと質感 */
+    .bubble {
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), rgba(173, 216, 230, 0.3) 60%, rgba(255, 192, 203, 0.4) 100%);
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.6), inset 0 0 20px rgba(255, 255, 255, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      backdrop-filter: blur(2px);
+      cursor: pointer;
+    }
+
+    /* しゃぼん玉の光の反射（ハイライト） */
+    .bubble::before {
+      content: '';
+      position: absolute;
+      top: 15%;
+      left: 20%;
+      width: 30%;
+      height: 30%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 70%);
+      transform: rotate(-45deg);
+    }
+
+    /* ふわふわ浮遊するアニメーション */
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-20px); }
+    }
+    .animate-float {
+      animation: float 4s ease-in-out infinite;
+    }
+
+    /* 不正解時のブルブル震えるアニメーション（エラーレス対応） */
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-10px) rotate(-5deg); }
+      40% { transform: translateX(10px) rotate(5deg); }
+      60% { transform: translateX(-10px) rotate(-5deg); }
+      80% { transform: translateX(10px) rotate(5deg); }
+    }
+    .animate-shake {
+      animation: shake 0.4s ease-in-out;
+    }
+
+    /* 割れるアニメーション */
+    @keyframes pop {
+      0% { transform: scale(1); opacity: 1; }
+      40% { transform: scale(1.3); opacity: 0.8; }
+      100% { transform: scale(2); opacity: 0; }
+    }
+    .animate-pop {
+      animation: pop 0.3s ease-out forwards;
+      pointer-events: none;
+    }
+
+    /* ヒント時のキラキラ脈打つアニメーション */
+    @keyframes pulseHint {
+      0%, 100% { box-shadow: 0 0 15px rgba(255, 255, 255, 0.6), inset 0 0 20px rgba(255, 255, 255, 0.8); transform: scale(1); }
+      50% { box-shadow: 0 0 40px rgba(250, 204, 21, 1), inset 0 0 30px rgba(250, 204, 21, 0.8); transform: scale(1.1); }
+    }
+    .animate-hint {
+      animation: pulseHint 1.5s ease-in-out infinite;
+      border: 3px solid rgba(250, 204, 21, 0.8);
+    }
+
+    /* 正解時の文字のポップアップ */
+    @keyframes popText {
+      0% { transform: scale(0.5); opacity: 0; }
+      70% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .pop-text-anim {
+      animation: popText 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    /* オノマトペ「パチン！」の出現 */
+    @keyframes onomatopoeia {
+      0% { transform: scale(0) rotate(-20deg); opacity: 0; }
+      50% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0deg); opacity: 0; }
+    }
+    .onomatopoeia-anim {
+      animation: onomatopoeia 0.8s ease-out forwards;
+    }
+
+    /* 紙吹雪のアニメーション */
+    @keyframes fall {
+      0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
+    }
+    .confetti {
+      position: absolute;
+      top: -20px;
+      width: 15px;
+      height: 15px;
+      border-radius: 2px;
+      animation: fall linear forwards;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo } = React;
+
+    // 学習するローマ字とひらがなのペアをモードごとに定義
+    const WORD_DATA = {
+      seion: [
+        { hiragana: 'あ', roman: 'A' }, { hiragana: 'い', roman: 'I' }, { hiragana: 'う', roman: 'U' }, { hiragana: 'え', roman: 'E' }, { hiragana: 'お', roman: 'O' },
+        { hiragana: 'か', roman: 'KA' }, { hiragana: 'き', roman: 'KI' }, { hiragana: 'く', roman: 'KU' }, { hiragana: 'け', roman: 'KE' }, { hiragana: 'こ', roman: 'KO' },
+        { hiragana: 'さ', roman: 'SA' }, { hiragana: 'し', roman: 'SI' }, { hiragana: 'す', roman: 'SU' }, { hiragana: 'せ', roman: 'SE' }, { hiragana: 'そ', roman: 'SO' },
+        { hiragana: 'た', roman: 'TA' }, { hiragana: 'ち', roman: 'TI' }, { hiragana: 'つ', roman: 'TU' }, { hiragana: 'て', roman: 'TE' }, { hiragana: 'と', roman: 'TO' },
+        { hiragana: 'な', roman: 'NA' }, { hiragana: 'に', roman: 'NI' }, { hiragana: 'ぬ', roman: 'NU' }, { hiragana: 'ね', roman: 'NE' }, { hiragana: 'の', roman: 'NO' },
+        { hiragana: 'は', roman: 'HA' }, { hiragana: 'ひ', roman: 'HI' }, { hiragana: 'ふ', roman: 'HU' }, { hiragana: 'へ', roman: 'HE' }, { hiragana: 'ほ', roman: 'HO' },
+        { hiragana: 'ま', roman: 'MA' }, { hiragana: 'み', roman: 'MI' }, { hiragana: 'む', roman: 'MU' }, { hiragana: 'め', roman: 'ME' }, { hiragana: 'も', roman: 'MO' },
+        { hiragana: 'や', roman: 'YA' }, { hiragana: 'ゆ', roman: 'YU' }, { hiragana: 'よ', roman: 'YO' },
+        { hiragana: 'ら', roman: 'RA' }, { hiragana: 'り', roman: 'RI' }, { hiragana: 'る', roman: 'RU' }, { hiragana: 'れ', roman: 'RE' }, { hiragana: 'ろ', roman: 'RO' },
+        { hiragana: 'わ', roman: 'WA' }, { hiragana: 'を', roman: 'WO' }, { hiragana: 'ん', roman: 'NN' }
+      ],
+      dakuon: [
+        { hiragana: 'が', roman: 'GA' }, { hiragana: 'ぎ', roman: 'GI' }, { hiragana: 'ぐ', roman: 'GU' }, { hiragana: 'げ', roman: 'GE' }, { hiragana: 'ご', roman: 'GO' },
+        { hiragana: 'ざ', roman: 'ZA' }, { hiragana: 'じ', roman: 'ZI' }, { hiragana: 'ず', roman: 'ZU' }, { hiragana: 'ぜ', roman: 'ZE' }, { hiragana: 'ぞ', roman: 'ZO' },
+        { hiragana: 'だ', roman: 'DA' }, { hiragana: 'ぢ', roman: 'DI' }, { hiragana: 'づ', roman: 'DU' }, { hiragana: 'で', roman: 'DE' }, { hiragana: 'ど', roman: 'DO' },
+        { hiragana: 'ば', roman: 'BA' }, { hiragana: 'び', roman: 'BI' }, { hiragana: 'ぶ', roman: 'BU' }, { hiragana: 'べ', roman: 'BE' }, { hiragana: 'ぼ', roman: 'BO' }
+      ],
+      handakuon: [
+        { hiragana: 'ぱ', roman: 'PA' }, { hiragana: 'ぴ', roman: 'PI' }, { hiragana: 'ぷ', roman: 'PU' }, { hiragana: 'ぺ', roman: 'PE' }, { hiragana: 'ぽ', roman: 'PO' }
+      ]
+    };
+
+    // 配列をシャッフルするヘルパー
+    const shuffleArray = (array) => {
+      const newArray = [...array];
+      for (let i = newArray.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+      }
+      return newArray;
+    };
+
+    // 紙吹雪コンポーネント（視覚的な報酬）
+    const Confetti = () => {
+      const colors = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
+      return (
+        <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+          {[...Array(40)].map((_, i) => (
+            <div
+              key={i}
+              className="confetti"
+              style={{
+                left: `${Math.random() * 100}%`,
+                backgroundColor: colors[Math.floor(Math.random() * colors.length)],
+                animationDuration: `${Math.random() * 2 + 2}s`,
+                animationDelay: `${Math.random() * 0.2}s`,
+              }}
+            />
+          ))}
+        </div>
+      );
+    };
+
+    const App = () => {
+      const [isStarted, setIsStarted] = useState(false);
+      const [currentQuestion, setCurrentQuestion] = useState(null);
+      const [bubbles, setBubbles] = useState([]);
+      const [status, setStatus] = useState('playing'); // 'playing', 'correct'
+      const [currentMode, setCurrentMode] = useState('seion'); // 'seion', 'dakuon', 'handakuon'
+      const [letterCase, setLetterCase] = useState('upper'); // 'upper', 'lower'
+      
+      // アニメーション用の状態
+      const [shakingBubbleId, setShakingBubbleId] = useState(null);
+      const [poppedBubbleId, setPoppedBubbleId] = useState(null);
+      const [showHint, setShowHint] = useState(false);
+
+      // 問題の生成ロジック
+      const generateQuestion = useCallback(() => {
+        const currentData = WORD_DATA[currentMode];
+
+        // ランダムに正解を1つ選ぶ
+        const correctItem = currentData[Math.floor(Math.random() * currentData.length)];
+        
+        // 不正解の選択肢（ダミー）を2つ選ぶ
+        let distractors = currentData.filter(item => item.roman !== correctItem.roman);
+        
+        // もし選択肢が少なすぎる場合（半濁音など）は他からも補充する安全策
+        if (distractors.length < 2) {
+            const allItems = [...WORD_DATA.seion, ...WORD_DATA.dakuon, ...WORD_DATA.handakuon];
+            distractors = allItems.filter(item => item.roman !== correctItem.roman);
+        }
+
+        distractors = shuffleArray(distractors).slice(0, 2);
+
+        // 正解とダミーを混ぜてシャッフルし、画面に表示するしゃぼん玉の配列を作る
+        const options = shuffleArray([correctItem, ...distractors]).map((item, index) => ({
+          id: index,
+          roman: item.roman,
+          isCorrect: item.roman === correctItem.roman
+        }));
+
+        setCurrentQuestion(correctItem);
+        setBubbles(options);
+        setStatus('playing');
+        setShakingBubbleId(null);
+        setPoppedBubbleId(null);
+        setShowHint(false);
+      }, [currentMode]);
+
+      // ゲーム開始
+      const startGame = () => {
+        setIsStarted(true);
+        generateQuestion();
+      };
+
+      // 無操作タイマー（ヒント機能）
+      useEffect(() => {
+        let timer;
+        if (status === 'playing') {
+          // 5秒間操作がなければヒントを表示
+          timer = setTimeout(() => {
+            setShowHint(true);
+          }, 5000);
+        }
+        return () => clearTimeout(timer);
+      }, [currentQuestion, status, shakingBubbleId]); // 揺らしたりした時もリセットされるように
+
+      // しゃぼん玉をタッチした時の処理
+      const handleBubbleClick = (bubble) => {
+        if (status !== 'playing') return;
+
+        setShowHint(false); // タッチしたらヒント状態は解除
+
+        if (bubble.isCorrect) {
+          // 正解の処理
+          setStatus('correct');
+          setPoppedBubbleId(bubble.id);
+          
+          // 視覚的なフィードバックを十分に見せた後、次の問題へ
+          setTimeout(() => {
+            generateQuestion();
+          }, 2500); // 2.5秒後に次へ
+        } else {
+          // 不正解の処理（エラーレス：❌を出さず揺れるだけ）
+          setShakingBubbleId(bubble.id);
+          // 揺れアニメーションが終わる頃に状態をクリア
+          setTimeout(() => {
+            setShakingBubbleId(null);
+          }, 400);
+        }
+      };
+
+      // スタート画面
+      if (!isStarted) {
+        return (
+          <div className="min-h-screen flex flex-col items-center justify-center space-y-6 relative pb-10">
+            {/* 背景の装飾 */}
+            <div className="absolute top-10 left-10 w-32 h-32 bubble opacity-50 animate-float"></div>
+            <div className="absolute bottom-20 right-20 w-48 h-48 bubble opacity-40 animate-float" style={{animationDelay: '1s'}}></div>
+            
+            <div className="z-10 text-center space-y-6 bg-white/70 backdrop-blur-md p-8 rounded-3xl shadow-xl border-4 border-white max-w-lg w-11/12 mx-auto">
+              <h1 className="text-4xl md:text-5xl font-black text-blue-500 drop-shadow-sm">
+                しゃぼん玉ぽっぽ
+              </h1>
+              <p className="text-xl text-gray-700 font-bold">
+                ローマ字を さがして<br/>パチン！と わってみよう
+              </p>
+
+              {/* モード選択エリア */}
+              <div className="flex flex-col items-center space-y-3 pt-4 pb-2 border-t-2 border-dashed border-gray-300">
+                <p className="text-base font-bold text-gray-500">もーど を えらんでね</p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button 
+                    onClick={() => setCurrentMode('seion')}
+                    className={`px-4 py-3 rounded-full font-bold text-lg md:text-xl border-4 transition-all ${currentMode === 'seion' ? 'bg-blue-100 border-blue-400 text-blue-700 scale-105 shadow-md' : 'bg-white border-gray-200 text-gray-400 hover:border-blue-200'}`}
+                  >
+                    あかさたな
+                  </button>
+                  <button 
+                    onClick={() => setCurrentMode('dakuon')}
+                    className={`px-4 py-3 rounded-full font-bold text-lg md:text-xl border-4 transition-all ${currentMode === 'dakuon' ? 'bg-green-100 border-green-400 text-green-700 scale-105 shadow-md' : 'bg-white border-gray-200 text-gray-400 hover:border-green-200'}`}
+                  >
+                    がざだば
+                  </button>
+                  <button 
+                    onClick={() => setCurrentMode('handakuon')}
+                    className={`px-4 py-3 rounded-full font-bold text-lg md:text-xl border-4 transition-all ${currentMode === 'handakuon' ? 'bg-pink-100 border-pink-400 text-pink-700 scale-105 shadow-md' : 'bg-white border-gray-200 text-gray-400 hover:border-pink-200'}`}
+                  >
+                    ぱぴぷぺぽ
+                  </button>
+                </div>
+              </div>
+
+              {/* 大文字・小文字選択エリア */}
+              <div className="flex flex-col items-center space-y-3 pt-4 pb-2 border-t-2 border-dashed border-gray-300">
+                <p className="text-base font-bold text-gray-500">おおもじ・こもじ を えらんでね</p>
+                <div className="flex justify-center gap-3">
+                  <button 
+                    onClick={() => setLetterCase('upper')}
+                    className={`px-6 py-3 rounded-full font-bold text-lg md:text-xl border-4 transition-all ${letterCase === 'upper' ? 'bg-purple-100 border-purple-400 text-purple-700 scale-105 shadow-md' : 'bg-white border-gray-200 text-gray-400 hover:border-purple-200'}`}
+                  >
+                    おおもじ(A)
+                  </button>
+                  <button 
+                    onClick={() => setLetterCase('lower')}
+                    className={`px-6 py-3 rounded-full font-bold text-lg md:text-xl border-4 transition-all ${letterCase === 'lower' ? 'bg-orange-100 border-orange-400 text-orange-700 scale-105 shadow-md' : 'bg-white border-gray-200 text-gray-400 hover:border-orange-200'}`}
+                  >
+                    こもじ(a)
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-4">
+                <button 
+                  onClick={startGame}
+                  className="text-3xl font-black bg-pink-400 text-white px-12 py-6 rounded-full shadow-[0_8px_0_#be185d] active:shadow-[0_0px_0_#be185d] active:translate-y-2 transition-all w-full md:w-auto"
+                >
+                  スタート！
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (!currentQuestion) return null;
+
+      return (
+        <div className="min-h-screen flex flex-col relative">
+          
+          {/* 正解時の紙吹雪エフェクト */}
+          {status === 'correct' && <Confetti />}
+
+          {/* 視覚的な指示（プロンプト）エリア */}
+          <div className="w-full pt-8 px-4 z-20 flex justify-center">
+            <div className="bg-white/90 backdrop-blur-sm border-4 border-blue-400 rounded-2xl px-6 py-4 shadow-lg flex items-center space-x-4">
+              <div className="text-4xl animate-bounce">👇</div>
+              <div className="text-3xl md:text-4xl font-black text-gray-700">
+                <span className="text-5xl md:text-6xl text-pink-500 mx-2">{currentQuestion.hiragana}</span>
+                は どれかな？
+              </div>
+            </div>
+          </div>
+
+          {/* 正解時の視覚的フィードバック（画面中央に大きく表示） */}
+          {status === 'correct' && (
+            <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
+              {/* オノマトペ */}
+              <div className="absolute onomatopoeia-anim text-6xl md:text-8xl font-black text-yellow-400 drop-shadow-[0_5px_0_#b45309] z-10" style={{top: '30%'}}>
+                パチン✨
+              </div>
+              {/* 大きなひらがな */}
+              <div className="pop-text-anim text-[150px] md:text-[200px] font-black text-pink-500 drop-shadow-[0_10px_0_#be185d] bg-white/50 rounded-full w-72 h-72 md:w-96 md:h-96 flex items-center justify-center z-20">
+                {currentQuestion.hiragana}
+              </div>
+            </div>
+          )}
+
+          {/* しゃぼん玉表示エリア */}
+          <div className="flex-1 flex items-center justify-center gap-4 md:gap-12 px-4 pb-12 z-10 relative">
+            {bubbles.map((bubble, index) => {
+              // クラス名の動的生成
+              let bubbleClasses = "bubble relative flex items-center justify-center w-28 h-28 md:w-40 md:h-40 ";
+              
+              if (poppedBubbleId === bubble.id) {
+                bubbleClasses += "animate-pop ";
+              } else if (shakingBubbleId === bubble.id) {
+                bubbleClasses += "animate-shake ";
+              } else {
+                bubbleClasses += "animate-float ";
+              }
+
+              // ヒント状態の付与
+              if (showHint && bubble.isCorrect && status === 'playing' && shakingBubbleId !== bubble.id) {
+                bubbleClasses += "animate-hint ";
+              }
+
+              return (
+                <div 
+                  key={bubble.id}
+                  className={bubbleClasses}
+                  style={{
+                    // それぞれのしゃぼん玉のアニメーション開始タイミングを少しずらす
+                    animationDelay: poppedBubbleId === bubble.id || shakingBubbleId === bubble.id ? '0s' : `${index * 0.3}s`
+                  }}
+                  onPointerDown={() => handleBubbleClick(bubble)}
+                >
+                  <span className="text-5xl md:text-7xl font-black text-blue-600 drop-shadow-md z-10 select-none">
+                    {letterCase === 'lower' ? bubble.roman.toLowerCase() : bubble.roman}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
